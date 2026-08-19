@@ -1,89 +1,68 @@
-<Docktype html>
-<html>
-    <head>
-        <title>About</title>
-        <style>
-            body {
-                margin: 0;
-                padding: 0;
-            }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About · Terraform EKS GitOps Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="container nav-wrap">
+        <a class="brand" href="/home">Project 2</a>
+        <nav>
+            <a href="/home">Home</a>
+            <a href="/pipeline">Pipeline</a>
+            <a href="/platform">Platform</a>
+            <a href="/deployment">Deployment</a>
+            <a class="active" href="/about">About</a>
+        </nav>
+    </div>
+</header>
 
-            header {
-                background-color: #333;
-                color: #fff;
-                padding: 10px 0;
-                text-align: center;
-            }
+<main>
+    <section class="hero compact container">
+        <span class="eyebrow">About the project</span>
+        <h1>Built to make the full DevOps path visible</h1>
+        <p class="lead">Project 2 is a hands-on platform engineering project that demonstrates how application source, CI, infrastructure as code, GitOps, Kubernetes, and AWS-native networking fit together.</p>
+    </section>
 
-            nav ul {
-                list-style-type: none;
-                padding: 0;
-            }
+    <section class="container section">
+        <div class="card-grid two">
+            <article class="card">
+                <span class="card-label">Project 1</span>
+                <h3>Prove the delivery pipeline</h3>
+                <p>The first version established the fundamentals: Go, Docker, Kubernetes, Helm, GitHub Actions, Argo CD, and EKS.</p>
+            </article>
+            <article class="card">
+                <span class="card-label">Project 2</span>
+                <h3>Rebuild it with explicit platform ownership</h3>
+                <p>This version adds Terraform-managed AWS networking and EKS, private worker nodes, EKS Pod Identity, AWS ALB ingress, and a self-contained CI/GitOps workflow.</p>
+            </article>
+        </div>
+    </section>
 
-            nav ul li {
-                display: inline;
-                margin-right: 10px;
-            }
+    <section class="container section">
+        <div class="section-heading">
+            <span class="eyebrow">Core ideas</span>
+            <h2>What this project demonstrates</h2>
+        </div>
+        <div class="card-grid three">
+            <article class="card"><h3>Infrastructure as Code</h3><p>Terraform declares the AWS network, EKS cluster, platform services, and GitOps bootstrap boundary.</p></article>
+            <article class="card"><h3>Immutable Delivery</h3><p>Each successful application build is published with a unique run-specific container tag.</p></article>
+            <article class="card"><h3>GitOps Reconciliation</h3><p>Argo CD continuously reconciles the Helm-defined application state stored in Git.</p></article>
+        </div>
+    </section>
 
-            nav ul li a {
-                color: #fff;
-                text-decoration: none;
-            }
+    <section class="container section">
+        <div class="callout">
+            <span class="eyebrow">Design principle</span>
+            <h2>Clear ownership, fewer hidden steps</h2>
+            <p>Terraform owns infrastructure and bootstrap resources. Argo CD owns application reconciliation. The AWS Load Balancer Controller owns the ALB generated from Kubernetes Ingress. Each tool has a deliberate boundary.</p>
+        </div>
+    </section>
+</main>
 
-            main {
-                padding: 20px;
-            }
-
-            section {
-                margin-bottom: 20px;
-            }
-
-            footer {
-                background-color: #333;
-                color: #fff;
-                text-align: center;
-                padding: 10px 0;
-                position: fixed;
-                bottom: 0;
-                width: 100%;
-            }
-        </style>
-    </head>
-    <body>
-        <header>
-            <nav>
-                <ul>
-                    <li><a href="home">Home</a></li>
-                    <li><a href="about">About</a></li>
-                    <li><a href="contact">Contact</a></li>
-                    <li><a href="courses">Courses</a></li>
-                </ul>
-            </nav>
-        </header>
-
-        <main>
-            <section>
-                <h1>About the Author</h1>
-
-                    <p>    I am an opensource enthusiast and a great believer in sharing knowledge. </p>
-                        <p>  I have my footprints in popular opensource projects like Argo CD, Argo CD Operator, Argo Rollouts Manager, GitOps Operator, F5 Ingress Controller, Nginx Ingress Controller by Nginx and others. </p>
-                    
-                            <p> Apart from working with Red Hat as a GitOps product lead, I also hold below positions in OpenSource communities</p>
-                                <p>  - Maintainer of Argo CD Operator</p>
-                                    <p> - Creator of Argo Rollouts Manager</p>
-                                        <p> - Maintainer of RedHat Developer (GitOps operator)</p>
-                                            <p> - Member of Argo Project</p>
-                                                <p> - Member of Argo SIG Security</p>
-                    
-                                                    <p> If you want to learn complete devops for free with practical projects, checkout the playlist</p>
-                                                        <p><a href="https://www.youtube.com/playlist?list=PLdpzxOOAlwvIKMhk8WhzN1pYoJ1YU8Csa"> Playlists</a></p>
-                    
-                                                            <p> Please subscribe to the channel to keep learning and growing together. Thanks :)</p>
-            </section>
-        </main>
-
-        <footer>
-            <p>&copy; Bryan Obabori</p>
-        </footer>
-    </body>
+<footer><div class="container">Bryan Obabori · Terraform EKS GitOps Platform</div></footer>
+</body>
 </html>
