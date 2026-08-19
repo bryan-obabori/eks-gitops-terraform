@@ -2,97 +2,96 @@
 
 Production-style AWS EKS platform built with Terraform and deployed through GitOps.
 
-This project provisions the AWS network and EKS cluster explicitly with Terraform, installs the platform components separately, and uses Argo CD to continuously deploy a Helm-packaged Go web application from GitHub.
+This project provisions the AWS network and EKS cluster explicitly with Terraform, installs the platform components with Terraform, and uses Terraform to bootstrap the Argo CD `Application`. Argo CD then owns continuous application delivery from Git.
+
+Project 1, which provided the reusable Go application and Helm assets, is public at [bryan-obabori/go-web-app-devops](https://github.com/bryan-obabori/go-web-app-devops).
 
 ## Architecture
 
 ```text
-GitHub
-  |
-  | Argo CD watches main
-  v
-Argo CD
-  |
-  | renders Helm chart
-  v
-Kubernetes Deployment + Service + Ingress
-  |
-  v
-AWS Load Balancer Controller
-  |
-  v
-Internet-facing Application Load Balancer
-  |
-  v
-Go web application
-
-AWS infrastructure
-
-Internet Gateway
-      |
-      v
-Public subnets in two AZs
-  |                 |
-NAT Gateway A    NAT Gateway B
-  |                 |
-  v                 v
-Private subnet A  Private subnet B
-      |                 |
-      +-------+---------+
-              |
-              v
-        EKS managed nodes
+Terraform
+│
+├── terraform/infra
+│   ├── VPC / subnets / routing
+│   ├── Internet Gateway / NAT Gateways
+│   ├── IAM
+│   ├── EKS control plane
+│   └── private managed node group
+│
+├── terraform/platform
+│   ├── Argo CD
+│   ├── EKS Pod Identity Agent
+│   ├── AWS Load Balancer Controller
+│   └── controller IAM / Pod Identity
+│
+└── terraform/apps
+    └── Argo CD Application: go-web-app
+            │
+            v
+         Argo CD
+            │
+            ├── Deployment
+            ├── ClusterIP Service
+            └── ALB Ingress
+                    │
+                    v
+          AWS Load Balancer Controller
+                    │
+                    v
+       Internet-facing Application Load Balancer
+                    │
+                    v
+               Go web app
 ```
+
+The ownership boundary is intentional: Terraform owns the AWS infrastructure, platform installation, and Argo CD bootstrap object. Argo CD owns the Kubernetes application resources. The AWS Load Balancer Controller creates and manages the ALB from the Kubernetes Ingress.
 
 ## What This Project Builds
 
-### Infrastructure layer — `terraform/infra`
+### Infrastructure — `terraform/infra`
 
-- VPC with CIDR `10.0.0.0/16`
+- VPC `10.0.0.0/16`
 - Two public subnets across two Availability Zones
 - Two private subnets across two Availability Zones
 - Internet Gateway
 - One NAT Gateway per Availability Zone
 - Public and private route tables
 - EKS control plane
-- Managed EKS node group with two private worker nodes
-- IAM roles and policies required by EKS and the node group
-- Restricted public EKS API access through a local `terraform.tfvars` value
+- Managed node group with two private `t3.medium` workers
+- EKS and node IAM roles/policies
+- Restricted public EKS API access through a local `terraform.tfvars`
 
 The worker nodes run only in private subnets and do not receive public IP addresses.
 
-### Platform layer — `terraform/platform`
+### Platform — `terraform/platform`
 
-- Argo CD installed with Helm
+- Argo CD installed through Helm
 - EKS Pod Identity Agent
-- AWS Load Balancer Controller
+- AWS Load Balancer Controller installed through Helm
 - Dedicated IAM policy and role for the controller
-- EKS Pod Identity association for the controller service account
+- EKS Pod Identity association for `aws-load-balancer-controller`
 
-The AWS Load Balancer Controller uses Pod Identity instead of broad permissions on the worker-node role.
+The controller receives AWS permissions through Pod Identity rather than broad permissions on the worker-node role.
 
-### GitOps layer
+### Application bootstrap — `terraform/apps`
 
-Argo CD watches this repository:
+Terraform manages the Argo CD `Application` custom resource using `kubernetes_manifest`.
+
+The Application points Argo CD at:
 
 ```text
 gitops/go-web-app-chart
 ```
 
-The Argo CD `Application` uses automated synchronization with pruning and self-healing enabled.
+and enables:
 
 ```text
-Git commit
-    |
-    v
-Argo CD reconciliation
-    |
-    v
-Helm render
-    |
-    v
-Kubernetes Deployment / Service / Ingress
+automated sync
+prune
+self-heal
 ```
+
+The Application includes the Argo CD resource finalizer so destroying the Terraform apps layer cascades through the Argo-managed workload before the platform and cluster are removed.
 
 ## Repository Structure
 
@@ -110,37 +109,49 @@ eks-gitops-terraform/
 │           └── service.yaml
 ├── terraform/
 │   ├── infra/
+│   │   ├── .terraform.lock.hcl
 │   │   ├── main.tf
 │   │   ├── outputs.tf
 │   │   ├── providers.tf
 │   │   ├── variables.tf
 │   │   └── versions.tf
-│   └── platform/
+│   ├── platform/
+│   │   ├── .terraform.lock.hcl
+│   │   ├── main.tf
+│   │   ├── providers.tf
+│   │   ├── variables.tf
+│   │   └── versions.tf
+│   └── apps/
+│       ├── .terraform.lock.hcl
 │       ├── main.tf
 │       ├── providers.tf
 │       ├── variables.tf
 │       └── versions.tf
 ├── .gitignore
-├── README.md
-└── TEARDOWN.md
+├── JOURNAL.md
+└── README.md
 ```
 
 ## Prerequisites
 
-- AWS CLI authenticated to an AWS account
+- AWS CLI authenticated to the target AWS account
 - Terraform
 - `kubectl`
 - Helm
 - Git
-- Access to the GitHub repository
 
-## Deploy
+AWS region and EKS cluster defaults are currently:
 
-### 1. Configure the allowed EKS API CIDR
+```text
+Region:  us-east-1
+Cluster: go-web-app-cluster
+```
 
-`terraform.tfvars` is intentionally ignored by Git.
+## Configure the Local EKS API CIDR
 
-Create:
+`terraform.tfvars` is intentionally ignored by Git because it contains an environment-specific public IP.
+
+Create or update:
 
 ```text
 terraform/infra/terraform.tfvars
@@ -149,20 +160,42 @@ terraform/infra/terraform.tfvars
 with:
 
 ```hcl
-allowed_public_cidr = "YOUR_PUBLIC_IP/32"
+allowed_public_cidr = "YOUR_CURRENT_PUBLIC_IP/32"
 ```
 
-### 2. Provision AWS infrastructure
+For example, you can discover your current public address and then write the `/32` value manually.
+
+If your public IP changes while the cluster is already running, update this variable through the infrastructure layer before relying on Kubernetes-provider operations from the new address.
+
+# Start / Rebuild the Environment
+
+The order matters because each Terraform root module depends on the layer before it.
+
+```text
+infra
+  ↓
+EKS kubeconfig
+  ↓
+platform
+  ↓
+apps
+  ↓
+Argo CD reconciles workload
+  ↓
+ALB becomes available
+```
+
+### 1. Build the AWS/EKS infrastructure
 
 ```bash
 terraform -chdir=terraform/infra init
-terraform -chdir=terraform/infra fmt
+terraform -chdir=terraform/infra fmt -check
 terraform -chdir=terraform/infra validate
 terraform -chdir=terraform/infra plan -out=tfplan
 terraform -chdir=terraform/infra apply tfplan
 ```
 
-### 3. Configure kubectl
+### 2. Refresh kubeconfig
 
 ```bash
 aws eks update-kubeconfig \
@@ -172,30 +205,31 @@ aws eks update-kubeconfig \
 kubectl get nodes -o wide
 ```
 
-### 4. Install platform components
+### 3. Build the platform layer
 
 ```bash
 terraform -chdir=terraform/platform init
-terraform -chdir=terraform/platform fmt
+terraform -chdir=terraform/platform fmt -check
 terraform -chdir=terraform/platform validate
 terraform -chdir=terraform/platform plan -out=tfplan
 terraform -chdir=terraform/platform apply tfplan
 ```
 
-Verify Argo CD and the AWS Load Balancer Controller:
+This installs Argo CD, the Pod Identity Agent, and AWS Load Balancer Controller before Terraform attempts to create the Argo `Application` custom resource.
+
+### 4. Bootstrap the GitOps application with Terraform
 
 ```bash
-kubectl get pods -n argocd
-kubectl get pods -n kube-system
+terraform -chdir=terraform/apps init
+terraform -chdir=terraform/apps fmt -check
+terraform -chdir=terraform/apps validate
+terraform -chdir=terraform/apps plan -out=tfplan
+terraform -chdir=terraform/apps apply tfplan
 ```
 
-### 5. Bootstrap the GitOps application
+There is no normal `kubectl apply -f argocd/application.yaml` step. Terraform owns that object.
 
-```bash
-kubectl apply -f argocd/application.yaml
-```
-
-Verify:
+### 5. Verify the running environment
 
 ```bash
 kubectl get application go-web-app -n argocd
@@ -203,16 +237,14 @@ kubectl get deployment,svc,ingress -n default
 kubectl get pods -n default
 ```
 
-Expected Argo CD state:
+Expected Argo state:
 
 ```text
 SYNC STATUS   HEALTH STATUS
 Synced        Healthy
 ```
 
-## Application Access
-
-Retrieve the ALB hostname:
+Retrieve and test the ALB:
 
 ```bash
 ALB=$(kubectl get ingress go-web-app \
@@ -220,11 +252,6 @@ ALB=$(kubectl get ingress go-web-app \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 echo "$ALB"
-```
-
-The application exposes `/home` as its home page:
-
-```bash
 curl -I "http://$ALB/home"
 ```
 
@@ -234,110 +261,162 @@ A healthy deployment returns:
 HTTP/1.1 200 OK
 ```
 
-The ALB health check is configured to use `/home` because the application does not define a handler for `/`.
+The ALB health check uses `/home` because the Go application intentionally has no `/` handler.
+
+# Destroy the Environment
+
+Destroy in the **reverse ownership order**.
+
+```text
+terraform/apps destroy
+        ↓
+Argo Application deleted
+        ↓
+Argo CD removes Deployment / Service / Ingress
+        ↓
+AWS Load Balancer Controller removes ALB
+        ↓
+terraform/platform destroy
+        ↓
+terraform/infra destroy
+```
+
+Do **not** destroy `terraform/infra` first. The EKS cluster and controllers need to remain alive long enough to clean up the Argo-managed Ingress and AWS ALB.
+
+### 1. Destroy the Terraform apps layer
+
+```bash
+terraform -chdir=terraform/apps init
+terraform -chdir=terraform/apps plan -destroy -out=destroy.tfplan
+terraform -chdir=terraform/apps apply destroy.tfplan
+```
+
+Because the Argo `Application` has the cascading resource finalizer, this removal should delete the application resources managed by Argo CD.
+
+Verify the application and Ingress are gone before continuing:
+
+```bash
+kubectl get application go-web-app -n argocd 2>/dev/null || true
+kubectl get deployment,svc,ingress -n default
+```
+
+The built-in `service/kubernetes` is expected to remain.
+
+Also confirm there is no application ALB left before removing the controller:
+
+```bash
+kubectl get ingress -A
+```
+
+### 2. Destroy the platform layer
+
+```bash
+terraform -chdir=terraform/platform init
+terraform -chdir=terraform/platform plan -destroy -out=destroy.tfplan
+terraform -chdir=terraform/platform apply destroy.tfplan
+```
+
+This removes Argo CD, AWS Load Balancer Controller, Pod Identity resources, controller IAM resources, and the Pod Identity Agent add-on.
+
+### 3. Destroy the infrastructure layer
+
+The required local `terraform/infra/terraform.tfvars` must still exist so Terraform can load the infrastructure configuration.
+
+```bash
+terraform -chdir=terraform/infra init
+terraform -chdir=terraform/infra plan -destroy -out=destroy.tfplan
+terraform -chdir=terraform/infra apply destroy.tfplan
+```
+
+Terraform then removes the managed node group, EKS control plane, NAT Gateways, Elastic IPs, routing, subnets, Internet Gateway, IAM resources, and VPC according to its dependency graph.
+
+### 4. Quick post-destroy checks
+
+```bash
+aws eks list-clusters \
+  --region us-east-1 \
+  --query "clusters[?@=='go-web-app-cluster']"
+
+terraform -chdir=terraform/apps state list
+terraform -chdir=terraform/platform state list
+terraform -chdir=terraform/infra state list
+```
+
+For a complete destroy, the cluster query should return `[]` and each Terraform state should contain no managed resources.
+
+Do not manually delete unrelated NAT Gateways, EIPs, volumes, load balancers, or other account resources just because they exist. Terraform should remain the lifecycle owner of resources created by this project.
 
 ## GitOps Workflow
 
-Application changes are delivered without manually applying Kubernetes manifests:
+Application source changes follow this path:
 
 ```text
-Application source change
-        |
-        v
-CI builds a new Docker image
-        |
-        v
+Project 1 application source change
+        ↓
+GitHub Actions builds a Docker image
+        ↓
 GitOps image tag is updated
-        |
-        v
-Argo CD detects Git change
-        |
-        v
-Deployment rolls out new image
+        ↓
+Argo CD detects the Git change
+        ↓
+Helm chart is rendered
+        ↓
+Kubernetes Deployment rolls out the image
 ```
 
-The Kubernetes Service remains `ClusterIP`. The AWS Load Balancer Controller uses ALB IP target mode to register pod IP addresses as load-balancer targets.
+The Kubernetes Service remains `ClusterIP`. The AWS Load Balancer Controller uses ALB `target-type: ip`, allowing the ALB to register pod IPs without exposing the worker nodes directly.
 
 ## Design Decisions
 
-**Private worker nodes** — application workloads run without public node IP addresses.
+**Three Terraform lifecycle layers** — `infra`, `platform`, and `apps` are separate root modules and states because they have different dependencies and lifecycles.
 
-**Two Availability Zones** — the network and worker nodes span two AZs.
+**Terraform owns the bootstrap boundary** — Terraform creates the Argo CD `Application`; no manual `kubectl apply` is required during a normal rebuild.
 
-**One NAT Gateway per AZ** — improves AZ independence compared with routing all private subnets through one NAT Gateway.
+**Argo CD owns workload reconciliation** — Terraform does not also manage the Deployment, Service, and Ingress. Avoiding dual ownership prevents Terraform and Argo CD from fighting over the same resources.
 
-**Separate Terraform root modules** — `infra` manages the long-lived AWS/EKS foundation while `platform` manages Kubernetes-facing platform components. Each directory therefore has its own Terraform state.
+**Private worker nodes** — workloads run without public node IP addresses.
 
-**EKS Pod Identity** — the AWS Load Balancer Controller receives AWS permissions through a dedicated pod identity rather than inheriting broad worker-node permissions.
+**Two Availability Zones** — the network and workers span two AZs.
 
-**Argo CD automated sync** — application desired state lives in Git and Argo CD continuously reconciles the cluster to that state.
+**One NAT Gateway per AZ** — costs more than a single-NAT lab, but demonstrates AZ-independent egress design.
 
-## Verification Commands
+**EKS Pod Identity** — AWS Load Balancer Controller receives a dedicated AWS identity rather than inheriting broad worker-node permissions.
 
-```bash
-echo "===== NODES ====="
-kubectl get nodes -o wide
+**Argo CD automated sync** — desired application state lives in Git and is continuously reconciled.
 
-echo "===== ARGO ====="
-kubectl get application go-web-app -n argocd
+## Terraform State and Secrets
 
-echo "===== APP ====="
-kubectl get deployment,svc,ingress -n default
-kubectl get pods -n default
+Terraform state is local for this lab and excluded from Git through `.gitignore`.
 
-echo "===== CONTROLLER ====="
-kubectl get pods -n kube-system | grep -E 'aws-load-balancer-controller|eks-pod-identity-agent'
+`*.tfvars` files are also ignored so environment-specific values such as the administrator public CIDR are not committed.
 
-echo "===== LIVE APP ====="
-ALB=$(kubectl get ingress go-web-app -n default -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-curl -I "http://$ALB/home"
-```
+Because state is local, the start/destroy lifecycle above assumes the same checkout and Terraform state files are available. For a shared, long-lived, or recoverable environment, the next infrastructure improvement would be a remote Terraform backend with locking and controlled access.
 
-## State and Secrets
-
-Terraform state is local for this lab and is excluded from Git through `.gitignore`.
-
-`*.tfvars` files are also ignored so account-specific values such as the administrator's public CIDR are not committed.
-
-For a shared or long-lived environment, the next step would be migrating state to a remote backend with locking and controlled access.
+Provider lock files (`.terraform.lock.hcl`) are committed intentionally.
 
 ## Cost Warning
 
-This lab creates billable AWS resources, including:
+The running environment includes billable resources such as:
 
 - EKS control plane
-- EC2 worker nodes
-- NAT Gateways
+- two EC2 worker nodes
+- two NAT Gateways
+- NAT Gateway Elastic IPs
 - Application Load Balancer
-- Elastic IP addresses associated with the NAT Gateways
 
-Destroy the environment when it is no longer needed. Follow [TEARDOWN.md](TEARDOWN.md) rather than deleting resources manually or in an arbitrary order.
+Destroy the environment when the lab is no longer needed using the reverse Terraform order documented above.
 
-## Teardown
+## Key Troubleshooting Lessons
 
-See [TEARDOWN.md](TEARDOWN.md) for the complete cleanup sequence.
-
-The high-level order is:
-
-```text
-Argo CD Application
-        |
-        v
-Application resources / ALB
-        |
-        v
-Terraform platform layer
-        |
-        v
-Terraform infrastructure layer
-        |
-        v
-AWS orphan-resource verification
-```
+- An ALB DNS lookup can fail temporarily while the load balancer is still provisioning; verify AWS state before changing infrastructure.
+- An HTTP `404` from the Go application proved the ALB-to-pod path was functioning; the requested route `/` simply did not exist.
+- `/home` returned HTTP `200`, so the ALB health-check path was changed to `/home`.
+- Environment-specific public IP values belong in ignored Terraform variables, not public Git.
+- Higher-level tools can hide important infrastructure relationships; explicitly building EKS with Terraform made subnetting, routing, IAM, Pod Identity, and load-balancer dependencies visible.
 
 ## Outcome
 
-This project demonstrates an end-to-end EKS platform lifecycle with:
+This project demonstrates a complete Terraform-to-GitOps ownership chain:
 
 ```text
 Terraform
@@ -345,11 +424,12 @@ Terraform
 + EKS
 + IAM / Pod Identity
 + Helm
-+ AWS Load Balancer Controller
 + Argo CD
++ Terraform-managed Argo Application
 + GitOps
 + Kubernetes
++ AWS Load Balancer Controller
 + Application Load Balancer
 ```
 
-The environment is reproducible from infrastructure provisioning through application deployment and can be removed through the documented Terraform teardown process.
+The environment can be rebuilt from source and destroyed through the same three Terraform lifecycle layers, with Argo CD retaining ownership of the application resources beneath the bootstrap boundary.
