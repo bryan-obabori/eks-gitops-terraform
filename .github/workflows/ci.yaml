@@ -23,6 +23,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: app/go.mod
+          cache-dependency-path: app/go.mod
 
       - name: Test application
         working-directory: app
