@@ -1,25 +1,24 @@
 # Project 2 Build Journal — Terraform EKS GitOps Platform
 
-This journal records the actual sequence used to build Project 2 from an empty Terraform/GitOps repository into a live AWS EKS platform with Argo CD, AWS Load Balancer Controller, Helm, GitOps, and a publicly reachable Go web application.
+This journal records the sequence used to build Project 2 from an empty Terraform/GitOps repository into a live AWS EKS platform with Terraform, Argo CD, AWS Load Balancer Controller, Helm, GitOps, and a publicly reachable Go web application.
 
-It is intentionally more chronological than `README.md`. The README explains the final architecture; this file records how we got there, including design choices, verification commands, mistakes, troubleshooting, and fixes.
+The companion `README.md` explains the finished architecture. This journal focuses on the build sequence, decisions, verification steps, and troubleshooting that happened along the way.
 
 ---
 
-# 1. Project Goal
+# 1. Starting Point and Goal
 
-Project 1 had already proven the application-delivery workflow using:
+Project 1 had already proven the application-delivery workflow using Go, Docker, Kubernetes, Helm, GitHub Actions, Argo CD, and an EKS cluster created primarily with `eksctl`.
 
-- Go
-- Docker
-- Kubernetes
-- Helm
-- GitHub Actions
-- Argo CD
-- EKS created with `eksctl`
-- an ingress controller
+Project 1 is publicly available at:
 
-Project 2 was created to rebuild the infrastructure side more explicitly with Terraform and to make the EKS architecture closer to a production-style AWS design.
+**[bryan-obabori/go-web-app-devops](https://github.com/bryan-obabori/go-web-app-devops)**
+
+Project 2 was created to rebuild the infrastructure side explicitly with Terraform and expose more of the AWS/EKS architecture that `eksctl` normally hides.
+
+The new project repository is:
+
+**[bryan-obabori/eks-gitops-terraform](https://github.com/bryan-obabori/eks-gitops-terraform)**
 
 The target architecture became:
 
@@ -52,19 +51,13 @@ Internet-facing AWS Application Load Balancer
 Go web application
 ```
 
-Project 1 was deliberately left intact as the completed `eksctl` version. We reused proven application assets from it rather than rebuilding everything from scratch.
+The important decision was to reuse the proven application assets from Project 1 while making Project 2 primarily an infrastructure and platform-engineering exercise.
 
 ---
 
-# 2. Local Project Layout
+# 2. Repository Structure
 
-The new local project directory was:
-
-```text
-/Users/bryanobabori/Documents/go-web-app/eks-gitops-terraform
-```
-
-The final repository structure became:
+The final Project 2 repository structure is:
 
 ```text
 eks-gitops-terraform/
@@ -99,15 +92,15 @@ eks-gitops-terraform/
 └── JOURNAL.md
 ```
 
-We kept the Terraform layout intentionally small. Instead of creating many tiny files, related resources were grouped into a few files with clear comment separators.
+We intentionally kept the Terraform layout small. Instead of creating many tiny `.tf` files, related resources were grouped into a few files with clear comment separators.
 
 ---
 
-# 3. Terraform Model We Used
+# 3. Terraform Model Used in the Project
 
-Before building, we clarified a few Terraform concepts that became important throughout the project.
+Before building, we established a few Terraform concepts that guided the structure of the project.
 
-## A Terraform directory is one root module
+## One directory = one root module
 
 Terraform reads all `.tf` files in the same directory together.
 
@@ -120,25 +113,18 @@ terraform/infra/variables.tf
 terraform/infra/outputs.tf
 ```
 
-are not independent programs. They are all part of one Terraform root module.
+are one Terraform root module, not four independent programs.
 
-The same is true for `terraform/platform`.
+The same applies to `terraform/platform`.
 
 ## Why `infra` and `platform` were separated
 
-We intentionally used two Terraform root modules:
+We used two Terraform root modules:
 
 ```text
 terraform/infra
 terraform/platform
 ```
-
-This means they also have separate:
-
-- Terraform state
-- `.terraform/` directories
-- provider initialization
-- lock files
 
 The separation reflects lifecycle boundaries:
 
@@ -150,7 +136,14 @@ platform
   = Argo CD + Pod Identity + AWS Load Balancer Controller
 ```
 
-## Terraform workflow used repeatedly
+Each root module therefore has its own:
+
+- Terraform state
+- `.terraform/` directory
+- provider initialization
+- provider lock file
+
+## Terraform workflow used throughout
 
 ```bash
 terraform init
@@ -167,7 +160,7 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-The mental model used throughout the project was:
+The working mental model was:
 
 ```text
 provider  = API bridge
@@ -176,16 +169,16 @@ local     = internal computed value
 data      = query an existing object/value
 resource  = create/manage infrastructure
 output    = expose a useful value
-state     = Terraform's mapping between configuration and real resources
+state     = mapping between Terraform configuration and real resources
 ```
 
-The `.terraform.lock.hcl` file was committed because it pins provider selections. Terraform state was not committed.
+`.terraform.lock.hcl` was committed because it pins provider selections. Terraform state was intentionally excluded from Git.
 
 ---
 
 # 4. Building the AWS Network
 
-The first major build phase was the VPC and subnet architecture.
+The first major build phase was the AWS network.
 
 We selected a two-Availability-Zone design:
 
@@ -201,13 +194,13 @@ AZ B
 └── Private subnet 10.0.12.0/24
 ```
 
-Terraform queried available Availability Zones and selected the first two rather than hard-coding zone names.
+Terraform queried available Availability Zones and selected two rather than hard-coding specific zone names.
 
 ## Public subnets
 
-The two public subnets were created with public IP mapping enabled.
+Two public subnets were created with public IP mapping enabled.
 
-They were tagged for Kubernetes/AWS external load balancer discovery:
+They were tagged for external Kubernetes/AWS load balancer discovery:
 
 ```hcl
 "kubernetes.io/role/elb" = "1"
@@ -215,7 +208,7 @@ They were tagged for Kubernetes/AWS external load balancer discovery:
 
 ## Private subnets
 
-The two private subnets were created with public IP mapping disabled.
+Two private subnets were created with public IP mapping disabled.
 
 They were tagged for internal load balancer discovery:
 
@@ -233,9 +226,9 @@ The public route table used:
 0.0.0.0/0 -> Internet Gateway
 ```
 
-## NAT Gateway decision
+## NAT Gateway design
 
-We deliberately chose two NAT Gateways:
+We deliberately chose one NAT Gateway per Availability Zone:
 
 ```text
 Public subnet A -> NAT Gateway A
@@ -249,9 +242,9 @@ Private subnet A -> NAT A
 Private subnet B -> NAT B
 ```
 
-This costs more than a single-NAT lab design, but it demonstrates an AZ-independent production-style topology.
+This costs more than a single-NAT lab design, but demonstrates a more resilient multi-AZ topology.
 
-Each NAT Gateway required its own Elastic IP.
+Each NAT Gateway required an Elastic IP.
 
 ## Route tables
 
@@ -268,19 +261,17 @@ Private route table B
     0.0.0.0/0 -> NAT Gateway B
 ```
 
-Subnet-to-route-table associations were created explicitly in Terraform.
+Subnet-to-route-table associations were managed explicitly in Terraform.
 
 ## Network apply
 
-We ran the normal Terraform sequence in `terraform/infra` and applied the network resources.
-
-The network layer completed successfully before EKS was added.
+We ran the normal Terraform sequence from the `terraform/infra` root module and applied the networking resources before adding EKS.
 
 ---
 
 # 5. Adding EKS to the Infrastructure Layer
 
-After the VPC was working, we added EKS resources to the same `terraform/infra` root module.
+After the VPC was working, EKS resources were added to `terraform/infra`.
 
 ## EKS cluster IAM role
 
@@ -300,13 +291,13 @@ This role is used by the EKS control plane.
 
 ## EKS cluster
 
-The cluster name used throughout the project was:
+The cluster name is:
 
 ```text
 go-web-app-cluster
 ```
 
-The cluster was configured with Kubernetes/EKS version:
+The cluster was configured for EKS/Kubernetes version:
 
 ```text
 1.35
@@ -318,33 +309,31 @@ Authentication mode:
 API_AND_CONFIG_MAP
 ```
 
-and the Terraform creator was allowed bootstrap administrator access.
+Bootstrap administrator permissions were enabled for the Terraform creator.
 
 ## Cluster networking
 
-The EKS control plane was connected to the two private subnets:
+The EKS cluster was associated with the two private subnets:
 
 ```text
 10.0.11.0/24
 10.0.12.0/24
 ```
 
-The Kubernetes API endpoint was configured with both:
+The Kubernetes API endpoint was configured with:
 
 ```text
 private access = enabled
 public access  = enabled
 ```
 
-Public access was restricted to the administrator's current `/32` public CIDR rather than being open to the world.
+Public API access was restricted to an administrator `/32` CIDR rather than being open to the internet.
 
 ---
 
-# 6. Removing the Public IP from Git
+# 6. Moving the Public CIDR Out of Git
 
-Initially, the allowed public API CIDR was directly present in the Terraform configuration.
-
-Before publishing the repository, we moved it into a local variable file.
+Before publishing the repository, the account/location-specific EKS API allow-list value was moved out of the tracked Terraform configuration.
 
 `variables.tf` received:
 
@@ -361,32 +350,35 @@ and the cluster configuration used:
 public_access_cidrs = [var.allowed_public_cidr]
 ```
 
-A local file was created:
+A local file was used for the actual value:
 
 ```text
 terraform/infra/terraform.tfvars
 ```
 
-with the current `/32` CIDR.
-
-The repository `.gitignore` was configured to ignore:
+The repository `.gitignore` excludes:
 
 ```text
 *.tfvars
 *.tfvars.json
 ```
 
-We explicitly verified that the public IP was not staged and that `terraform.tfvars` was ignored before the first GitHub push.
+Before the first public push, we explicitly checked that:
 
-This was an important cleanup step because the repo was intended to be public.
+```text
+public CIDR was not staged
+terraform.tfvars was ignored
+```
+
+Both checks passed.
 
 ---
 
 # 7. EKS Worker Node Role and Managed Node Group
 
-We created a separate IAM role for EC2 worker nodes.
+A separate IAM role was created for the EC2 worker nodes.
 
-The trust principal was:
+The trust principal is:
 
 ```text
 ec2.amazonaws.com
@@ -400,11 +392,9 @@ AmazonEC2ContainerRegistryPullOnly
 AmazonEKS_CNI_Policy
 ```
 
-For this learning project, the VPC CNI policy was attached directly to the worker-node role.
+For this learning environment, the VPC CNI policy was attached directly to the node role. A stricter production design could move CNI permissions to a dedicated workload identity.
 
-We noted that a tighter production design could place CNI permissions on a dedicated identity instead.
-
-## Node group configuration
+## Managed node group
 
 The managed node group used:
 
@@ -412,19 +402,19 @@ The managed node group used:
 instance type: t3.medium
 capacity type: ON_DEMAND
 minimum:       2
-preferred:     2
+desired:       2
 maximum:       3
 ```
 
 The worker nodes were placed only in the two private subnets.
 
-That means the nodes did not receive public IP addresses.
+That means the nodes do not receive public IP addresses.
 
 ---
 
 # 8. Applying and Verifying EKS
 
-After planning and applying the EKS additions, we updated the local kubeconfig:
+After planning and applying the EKS additions, kubeconfig was updated:
 
 ```bash
 aws eks update-kubeconfig \
@@ -432,31 +422,31 @@ aws eks update-kubeconfig \
   --region us-east-1
 ```
 
-We verified the cluster using:
+The nodes were checked with:
 
 ```bash
 kubectl get nodes -o wide
 ```
 
-Two nodes were `Ready`.
+Two nodes reached `Ready` state.
 
-They were distributed across the two private subnet ranges:
+Their internal addresses were distributed across the two private subnet ranges:
 
 ```text
 10.0.11.x
 10.0.12.x
 ```
 
-and neither node had an external IP.
+Neither node had an external IP.
 
-We also mapped the EC2 instances back to their subnets/AZs to verify the intended multi-AZ private-node topology.
+We also mapped the EC2 instances back to their subnets/AZs to confirm the intended multi-AZ private-node topology.
 
-At this point the infrastructure layer had proven:
+At this stage, the infrastructure layer had proven:
 
 ```text
 VPC
 + public/private subnet separation
-+ dual NAT Gateways
++ two NAT Gateways
 + routing
 + EKS control plane
 + two private managed workers
@@ -466,62 +456,56 @@ VPC
 
 # 9. Building the Terraform Platform Layer
 
-Rather than mixing Kubernetes add-ons into the same state as the VPC/EKS foundation, we created:
+Rather than mixing Kubernetes add-ons into the same Terraform state as the VPC and EKS foundation, we created:
 
 ```text
 terraform/platform
 ```
 
-## Providers
-
-The platform layer used:
+The platform root module uses:
 
 - AWS provider
 - Kubernetes provider
 - Helm provider
 - HTTP provider
 
-The AWS provider was configured for `us-east-1`.
+Terraform queries the existing EKS cluster using data sources.
 
-Terraform queried the existing EKS cluster using data sources.
+The Kubernetes and Helm providers are configured dynamically from:
 
-The Kubernetes and Helm providers were dynamically configured with:
-
-- the EKS endpoint
-- the cluster CA certificate
-- an EKS authentication token
+- EKS endpoint
+- cluster CA certificate
+- EKS authentication token
 
 This avoided hard-coding Kubernetes credentials.
 
 ---
 
-# 10. Installing Argo CD with Terraform + Helm
+# 10. Installing Argo CD with Terraform and Helm
 
 Argo CD was the first platform component installed.
 
-Terraform created a Helm release using the Argo Helm repository.
-
-The namespace was:
+Terraform created an Argo CD Helm release in:
 
 ```text
 argocd
 ```
 
-and Terraform was allowed to create it.
+The namespace was created automatically by the release.
 
-The Argo CD server Service was deliberately configured as:
+The Argo CD server Service was intentionally configured as:
 
 ```text
 ClusterIP
 ```
 
-We did not expose the Argo CD UI publicly for this lab.
+The Argo UI was not exposed publicly for this lab.
 
 ## Verification
 
-After apply, we checked the Argo namespace.
+After apply, we verified the Argo CD namespace and its pods.
 
-The expected Argo components were healthy, including:
+The expected components were healthy, including:
 
 - application controller
 - applicationset controller
@@ -531,15 +515,15 @@ The expected Argo components were healthy, including:
 - repo server
 - server
 
-The server Service showed no public external IP, as intended.
+The Argo CD server had no external IP, as intended.
 
 ---
 
-# 11. Ingress Architecture Decision
+# 11. Choosing AWS Load Balancer Controller
 
-Project 1 had used ingress-nginx.
+Project 1 had already demonstrated a different ingress approach.
 
-For Project 2 we intentionally changed the architecture and used AWS Load Balancer Controller instead.
+For Project 2, we intentionally moved to AWS Load Balancer Controller so the project would exercise AWS-native EKS load-balancer integration.
 
 The desired model became:
 
@@ -559,17 +543,15 @@ Kubernetes Service
 Pod
 ```
 
-This was also a better fit for learning AWS-native EKS load-balancer integration.
-
 ---
 
-# 12. AWS Load Balancer Controller with EKS Pod Identity
+# 12. Installing AWS Load Balancer Controller with EKS Pod Identity
 
-We wanted the AWS Load Balancer Controller to have a dedicated AWS identity instead of giving broad ALB permissions to every worker node.
+The controller needed AWS permissions to create and manage ALBs, target groups, listeners, and related AWS networking resources.
 
-We used EKS Pod Identity.
+Instead of placing those permissions broadly on every worker node, we used EKS Pod Identity.
 
-## Step 1 — Pod Identity Agent
+## Step 1 — EKS Pod Identity Agent
 
 Terraform installed the EKS add-on:
 
@@ -577,19 +559,19 @@ Terraform installed the EKS add-on:
 eks-pod-identity-agent
 ```
 
-The agent runs on the worker nodes and delivers temporary AWS credentials to associated Kubernetes workloads.
+The agent runs on the worker nodes and provides temporary AWS credentials to workloads with Pod Identity associations.
 
 ## Step 2 — controller IAM policy
 
-Terraform used the HTTP provider to retrieve the official IAM policy corresponding to the AWS Load Balancer Controller version used by the project.
+Terraform used the HTTP provider to retrieve the official IAM policy for the AWS Load Balancer Controller version being installed.
 
-The controller Helm/chart version was:
+The controller Helm chart version used in this project is:
 
 ```text
 3.4.3
 ```
 
-A dedicated IAM policy was then created from that policy document.
+A dedicated IAM policy was created from that policy document.
 
 ## Step 3 — controller IAM role
 
@@ -599,14 +581,14 @@ A dedicated IAM role was created with trust for:
 pods.eks.amazonaws.com
 ```
 
-The trust allowed:
+The role trust allows:
 
 ```text
 sts:AssumeRole
 sts:TagSession
 ```
 
-and was restricted to the intended:
+and is restricted to the intended:
 
 - EKS cluster
 - `kube-system` namespace
@@ -622,37 +604,35 @@ kube-system/aws-load-balancer-controller
 
 ## Step 5 — Pod Identity association
 
-Terraform associated that service account with the controller IAM role.
+Terraform associated the Kubernetes service account with the dedicated IAM role.
 
 ## Step 6 — Helm release
 
-The AWS Load Balancer Controller was installed into:
+The AWS Load Balancer Controller was installed in:
 
 ```text
 kube-system
 ```
 
-The Helm release was given:
+The Helm release received:
 
 - cluster name
-- region
+- AWS region
 - VPC ID
-- the existing Kubernetes service account
+- the existing service account name
 
-The chart was told not to create a new service account because Terraform had already created the Pod Identity-linked one.
+The chart was configured not to create a second service account because Terraform had already created the Pod Identity-linked account.
 
-## Platform plan/apply
+## Apply and verification
 
-The Load Balancer Controller addition planned seven new resources and no changes/destructions.
+The controller addition planned seven new resources with no changes or destroys.
 
 The apply completed successfully.
-
-## Verification
 
 We verified:
 
 - two AWS Load Balancer Controller pods running
-- the EKS Pod Identity Agent running on both worker nodes
+- EKS Pod Identity Agent pods running on the worker nodes
 
 At this point the AWS-native ingress control plane was operational.
 
@@ -660,57 +640,55 @@ At this point the AWS-native ingress control plane was operational.
 
 # 13. Reusing the Proven Helm Chart from Project 1
 
-Instead of rebuilding the application chart from scratch, we reused the known-working Helm chart from Project 1.
+Instead of rebuilding the application chart from scratch, the known-working Helm chart from Project 1 was reused.
 
-The Project 1 local source was:
+Project 1 source repository:
 
-```text
-/Users/bryanobabori/Documents/go-web-app/go-web-app
-```
+**[bryan-obabori/go-web-app-devops](https://github.com/bryan-obabori/go-web-app-devops)**
 
-We copied:
+The reusable chart is stored in Project 1 under:
 
 ```text
 helm/go-web-app-chart
 ```
 
-into Project 2 as:
+For Project 2, that chart became:
 
 ```text
 gitops/go-web-app-chart
 ```
 
-The copied chart already had:
+The chart already provided:
 
 - Deployment
 - ClusterIP Service
 - Ingress
 - image values
 
-The Deployment used the existing Docker Hub image repository:
+The Deployment uses the existing Docker Hub repository:
 
 ```text
 bryanobabori/go-web-app
 ```
 
-The container listens on port `8080`.
+The application container listens on port `8080`.
 
 The Kubernetes Service exposes port `80` and forwards to container port `8080`.
 
-This reuse was deliberate:
+The reuse decision was intentional:
 
 ```text
-Project 1 application assets = proven
+Project 1 application assets = already proven
 Project 2 infrastructure      = new learning focus
 ```
 
 ---
 
-# 14. Converting the Helm Ingress from NGINX to AWS ALB
+# 14. Converting the Helm Ingress to AWS ALB
 
-The copied chart originally contained ingress-nginx-specific configuration and a local host name.
+The reused chart was adapted for AWS Load Balancer Controller.
 
-For Project 2, the ingress was changed to:
+The Ingress class was changed to:
 
 ```yaml
 spec:
@@ -724,29 +702,27 @@ alb.ingress.kubernetes.io/scheme: internet-facing
 alb.ingress.kubernetes.io/target-type: ip
 ```
 
-The hard-coded local hostname was removed.
+The old host-specific routing requirement was removed so the AWS-generated ALB hostname could be used directly.
 
-This allowed direct access through the AWS-generated ALB DNS name.
+## Why the Service remained ClusterIP
 
-## Why the Service stayed ClusterIP
-
-Because the ALB uses:
+The ALB uses:
 
 ```text
 target-type: ip
 ```
 
-the controller can register Pod IPs as targets while the Kubernetes Service remains:
+so pod IPs can be registered as load-balancer targets while the application Service remains:
 
 ```text
 ClusterIP
 ```
 
-We did not need a `LoadBalancer` Service for the application.
+A separate Kubernetes `LoadBalancer` Service was not required.
 
 ---
 
-# 15. Preparing the Git Repository for Publication
+# 15. Preparing the Repository for Publication
 
 Before publishing Project 2, `.gitignore` was created to exclude:
 
@@ -757,16 +733,16 @@ Before publishing Project 2, `.gitignore` was created to exclude:
 *.tfplan
 *.tfvars
 *.tfvars.json
-crash logs
-macOS .DS_Store
+Terraform crash logs
+.DS_Store
 ```
 
-We intentionally kept both Terraform provider lock files under version control.
+Both `.terraform.lock.hcl` files were intentionally retained in version control.
 
-We then performed two safety checks:
+We also performed two safety checks:
 
 ```text
-public IP not staged
+public CIDR not staged
 terraform.tfvars ignored
 ```
 
@@ -774,15 +750,15 @@ Both checks passed.
 
 ---
 
-# 16. Creating the GitHub Repository
+# 16. Creating the Project 2 GitHub Repository
 
-The initial project commit was:
+The initial commit was:
 
 ```text
 fafd1b9  Build Terraform EKS GitOps platform
 ```
 
-The repository was created with GitHub CLI:
+The GitHub repository was created from the local project with:
 
 ```bash
 gh repo create eks-gitops-terraform \
@@ -792,26 +768,26 @@ gh repo create eks-gitops-terraform \
   --push
 ```
 
-The public repository became:
+The repository became:
 
 ```text
 bryan-obabori/eks-gitops-terraform
 ```
 
-We verified:
+We verified the remote and working tree with:
 
 ```bash
 git remote -v
 git status
 ```
 
-The local `main` branch was tracking `origin/main` and the working tree was clean.
+The `main` branch was tracking `origin/main` and the working tree was clean.
 
 ---
 
 # 17. Creating the Argo CD Application
 
-The next step was to connect Argo CD to the Project 2 Git repository.
+The next step connected Argo CD to Project 2.
 
 We created:
 
@@ -819,30 +795,30 @@ We created:
 argocd/application.yaml
 ```
 
-The application was named:
+The Argo CD Application is named:
 
 ```text
 go-web-app
 ```
 
-and stored in the `argocd` namespace.
+and lives in the `argocd` namespace.
 
-The source configuration pointed to:
+Its Git source is:
 
 ```text
-repo:   bryan-obabori/eks-gitops-terraform
-branch: main
-path:   gitops/go-web-app-chart
+repository: bryan-obabori/eks-gitops-terraform
+revision:   main
+path:       gitops/go-web-app-chart
 ```
 
-The destination was:
+The destination is:
 
 ```text
 cluster:   https://kubernetes.default.svc
 namespace: default
 ```
 
-Automated sync was enabled with:
+Automated reconciliation was enabled with:
 
 ```yaml
 automated:
@@ -850,61 +826,55 @@ automated:
   selfHeal: true
 ```
 
-This commit was:
+The bootstrap commit was:
 
 ```text
 a62e273  Bootstrap go web app with Argo CD
 ```
 
-We pushed the commit and applied the Application object:
+The Application was then created in the cluster:
 
 ```bash
 kubectl apply -f argocd/application.yaml
 ```
 
-The first immediate `kubectl get application` displayed blank sync/health fields because reconciliation had only just started.
+The first immediate check showed blank sync/health fields because Argo CD had only just received the Application object.
 
-We did not change anything at that point; we simply rechecked.
+Rather than changing anything, we checked again after reconciliation.
 
 ---
 
-# 18. Argo CD Reconciliation Succeeded
+# 18. Verifying Argo CD Reconciliation
 
-On the next check:
-
-```bash
-kubectl get application go-web-app -n argocd
-```
-
-Argo reported:
+The next check showed:
 
 ```text
 SYNC STATUS   HEALTH STATUS
 Synced        Healthy
 ```
 
-We then verified the application resources:
+We then verified the workload resources:
 
 ```bash
 kubectl get deployment,svc,ingress -n default
 kubectl get pods -n default
 ```
 
-Results showed:
+The results showed:
 
 - Deployment `1/1` available
-- Service `ClusterIP`
+- Service type `ClusterIP`
 - Ingress class `alb`
 - application Pod `Running`
 - AWS ALB hostname present in the Ingress status
 
-This proved GitOps reconciliation was working.
+This proved that Argo CD had successfully read the repository, rendered the Helm chart, and created the Kubernetes resources.
 
 ---
 
-# 19. First ALB Test Failed — DNS Could Not Resolve
+# 19. First ALB Test — DNS Not Yet Available
 
-We tried to curl the ALB hostname immediately.
+We tried the new ALB hostname immediately with `curl`.
 
 The result was:
 
@@ -912,9 +882,9 @@ The result was:
 curl: (6) Could not resolve host
 ```
 
-Instead of changing Kubernetes or Terraform blindly, we diagnosed the load balancer state.
+Instead of modifying Terraform or Kubernetes, we diagnosed the actual layer that was not ready.
 
-We checked:
+We checked the ALB through AWS:
 
 ```bash
 aws elbv2 describe-load-balancers
@@ -927,7 +897,7 @@ Scheme: internet-facing
 State:  provisioning
 ```
 
-We also checked DNS with:
+We also checked DNS:
 
 ```bash
 dig +short "$ALB"
@@ -942,15 +912,15 @@ The Kubernetes Ingress event showed:
 SuccessfullyReconciled
 ```
 
-That combination told us the controller had successfully requested the ALB, but AWS had not finished provisioning it.
+That told us the controller had successfully requested the ALB, while AWS was still finishing provisioning.
 
-No configuration changes were made.
+No infrastructure changes were needed.
 
 ---
 
 # 20. Waiting for the ALB to Become Active
 
-We used a shell loop to query the AWS ALB state until it transitioned from:
+We used a shell loop to query the ALB state until AWS changed it from:
 
 ```text
 provisioning
@@ -962,38 +932,34 @@ to:
 active
 ```
 
-Once active, DNS began resolving to public IPv4 addresses.
+Once the ALB became active, DNS began resolving to public IPv4 addresses.
 
 A new `curl` successfully connected to port 80.
 
-This proved:
+At that point we had proven:
 
 ```text
-Mac
+client
   -> DNS
   -> public ALB
 ```
 
-was now working.
-
 ---
 
-# 21. Second ALB Test Returned HTTP 404
+# 21. HTTP 404 Diagnosis
 
-After DNS became available, requesting the ALB root path returned:
+After the ALB became reachable, requesting the root path returned:
 
 ```text
 HTTP/1.1 404 Not Found
 404 page not found
 ```
 
-This was an important troubleshooting moment.
+This was not an infrastructure failure.
 
-Because the ALB had accepted the connection and returned an HTTP response, the infrastructure path was substantially working.
+Because the ALB accepted the connection and returned an HTTP response, the traffic path was already reaching the application.
 
-We inspected the original Go application source and found that it did not define a `/` route.
-
-Its routes were:
+We inspected the Go application routes in Project 1 and found that the application defines:
 
 ```text
 /home
@@ -1002,31 +968,37 @@ Its routes were:
 /contact
 ```
 
+but does not define:
+
+```text
+/
+```
+
 The Go server listens on:
 
 ```text
 0.0.0.0:8080
 ```
 
-So the 404 was not an ALB failure. It was the application correctly responding to an undefined route.
+So the 404 was the application correctly responding to an undefined route.
 
 ---
 
 # 22. Testing the Real Application Route
 
-We tested:
+We tested the actual home route:
 
 ```bash
 curl -I "http://$ALB/home"
 ```
 
-and received:
+The response was:
 
 ```text
 HTTP/1.1 200 OK
 ```
 
-That was the first definitive end-to-end application success.
+This was the definitive end-to-end application verification.
 
 It proved:
 
@@ -1053,15 +1025,15 @@ Go server :8080
 
 # 23. Fixing the ALB Health Check
 
-The application does not return success on `/`, so leaving the ALB health check on the default root path would be incorrect.
+Because the application does not return success on `/`, the ALB health check needed to use a real application route.
 
-We updated the Project 2 ingress annotations to include:
+The Ingress was updated with:
 
 ```yaml
 alb.ingress.kubernetes.io/healthcheck-path: /home
 ```
 
-The final ingress annotations became:
+The final ALB-related annotations became:
 
 ```yaml
 alb.ingress.kubernetes.io/scheme: internet-facing
@@ -1069,196 +1041,15 @@ alb.ingress.kubernetes.io/target-type: ip
 alb.ingress.kubernetes.io/healthcheck-path: /home
 ```
 
-Because the ingress manifest is in the GitOps repository, the change was committed and pushed and Argo CD reconciled it.
+Because the Ingress template lives in the GitOps repository, the change was committed and pushed and Argo CD reconciled it automatically.
 
-This aligned the ALB health check with the application's real successful route.
-
----
-
-# 24. Customizing the Borrowed Application Footer
-
-When the live application was viewed, the page still displayed the original sample author's copyright footer.
-
-The request was to replace it with:
-
-```text
-© Bryan Obabori
-```
-
-We initially referred to the "Go files," but inspection showed the footer was not in `main.go`.
-
-It lived in the static HTML files copied into the Docker image:
-
-```text
-static/home.html
-static/about.html
-static/courses.html
-```
-
-The Dockerfile copies the entire `static` directory into the runtime image.
-
-This was another useful lesson:
-
-```text
-visible browser content
-!= automatically Go source
-```
-
-The HTML source is what needed to change.
+This aligned AWS target health checks with the application's real behavior.
 
 ---
 
-# 25. First Footer Automation Attempt Failed
+# 24. Documentation Phase
 
-An initial large shell block intended to:
-
-1. modify the HTML
-2. commit Project 1
-3. wait for CI
-4. update Project 2 image tag
-5. wait for Argo
-6. verify the live page
-
-failed because a separator line was interpreted by `zsh` as a command.
-
-The shell produced an error similar to:
-
-```text
-zsh: =========================================================== not found
-```
-
-We did not assume success.
-
-Instead, we ran explicit verification checks.
-
-Those checks showed:
-
-- Project 1 HTML still contained `Abhishek.Veeramalla`
-- no new CI run existed
-- Project 2 still referenced the old image tag
-- the live site still displayed the old footer
-
-This was a good example of why post-change verification matters.
-
----
-
-# 26. Footer Replacement Succeeded Locally, but Git Push Failed
-
-A shorter replacement command successfully changed all matching HTML footers locally to:
-
-```text
-© Bryan Obabori
-```
-
-The change was committed in Project 1.
-
-However, `git push` was rejected with:
-
-```text
-fetch first
-```
-
-The reason was that remote `main` contained newer commits that the local Project 1 checkout did not yet have.
-
-Project 1's GitHub Actions workflow can itself commit updated Helm image tags, so the remote branch can move after CI.
-
-The solution was:
-
-```bash
-git pull --rebase origin main
-git push
-```
-
-This preserved the local footer commit while replaying it on top of the newer remote branch.
-
----
-
-# 27. Rebuilding the Docker Image and Updating Project 2
-
-Once the Project 1 footer commit was successfully pushed, GitHub Actions built a new Docker image.
-
-The workflow tags images using the GitHub Actions run ID:
-
-```text
-bryanobabori/go-web-app:run-<RUN_ID>
-```
-
-After the new image was available, Project 2's Helm values were updated to point at the new immutable image tag.
-
-That GitOps change was committed and pushed to Project 2.
-
-Argo CD detected the repository change and updated the Kubernetes Deployment.
-
-We then verified:
-
-- Deployment image changed to the new `run-...` tag
-- rollout completed
-- live `/home` page contained `Bryan Obabori`
-
-This exercise also demonstrated cross-repository delivery:
-
-```text
-Project 1
-source code
-   |
-   v
-GitHub Actions
-   |
-   v
-Docker Hub image
-
-Project 2
-GitOps image tag
-   |
-   v
-Argo CD
-   |
-   v
-EKS Deployment
-```
-
----
-
-# 28. Final Application State
-
-At completion, the application path was verified as:
-
-```text
-Argo CD:     Synced / Healthy
-Deployment:  Available
-Pod:         Running
-Ingress:     alb
-ALB:         active
-/home:       HTTP 200
-Footer:      © Bryan Obabori
-```
-
-The final request path is:
-
-```text
-Client
-  |
-  v
-AWS Application Load Balancer :80
-  |
-  v
-Kubernetes ingress rule /
-  |
-  v
-ClusterIP Service :80
-  |
-  v
-Pod :8080
-  |
-  v
-Go application
-```
-
----
-
-# 29. Documentation Phase
-
-After the platform was proven live, we added two repository documents.
+After the platform was proven live, repository documentation was added.
 
 ## README.md
 
@@ -1273,14 +1064,14 @@ The README documents:
 - Pod Identity design
 - ALB configuration
 - verification commands
-- state/secrets handling
-- cost warning
+- Terraform state handling
+- cost considerations
 
 ## TEARDOWN.md
 
-The teardown guide was created because this project contains multiple billable AWS resources and destruction order matters.
+The teardown guide was added because the environment contains several independently billable AWS resources and destruction order matters.
 
-The key order is:
+The documented sequence is:
 
 ```text
 Argo CD Application
@@ -1301,33 +1092,33 @@ Terraform infrastructure destroy
 AWS orphan-resource checks
 ```
 
-The main reason for deleting the GitOps application first is to allow the AWS Load Balancer Controller to remove the ALB while the EKS cluster still exists.
-
-Destroying EKS first could make external load-balancer cleanup harder.
+The GitOps application is removed first so the AWS Load Balancer Controller can delete the ALB while the EKS cluster is still operational.
 
 ---
 
-# 30. Important Cost Awareness During the Lab
+# 25. Cost Awareness
 
-During the project, the live AWS environment included billable resources such as:
+The live lab environment includes billable AWS resources such as:
 
 - EKS control plane
 - two `t3.medium` EC2 worker nodes
 - two NAT Gateways
-- NAT Elastic IPs
+- Elastic IPs associated with the NAT Gateways
 - Application Load Balancer
 
-Because the design intentionally used two NAT Gateways, this is not a zero-cost lab architecture.
+The dual-NAT design was chosen intentionally for the architecture exercise, not because it is the cheapest possible lab configuration.
 
-The environment should be destroyed after the learning/demo session using `TEARDOWN.md`.
+The environment should be destroyed when it is no longer needed by following `TEARDOWN.md`.
 
 ---
 
-# 31. What We Reused vs What We Built New
+# 26. What Was Reused vs Built New
 
-This distinction is important when explaining the project.
+This distinction is useful when explaining the project.
 
 ## Reused from Project 1
+
+From **[bryan-obabori/go-web-app-devops](https://github.com/bryan-obabori/go-web-app-devops)**:
 
 ```text
 Go application
@@ -1357,26 +1148,28 @@ Pod Identity association
 AWS Load Balancer Controller Helm installation
 ALB ingress conversion
 GitOps bootstrap Application
-Project 2 documentation and teardown process
+Project 2 README
+Project 2 teardown guide
+Project 2 build journal
 ```
 
-This allowed the project to focus on infrastructure and platform engineering rather than wasting time rebuilding an application that had already been proven.
+The reuse kept the project focused on infrastructure and platform engineering instead of rebuilding an application that had already been proven.
 
 ---
 
-# 32. Troubleshooting Lessons from the Project
+# 27. Troubleshooting Lessons
 
-## Lesson 1 — Do not change healthy infrastructure before identifying the failing layer
+## Lesson 1 — Identify the failing layer before changing infrastructure
 
-When `curl` could not resolve the ALB hostname, we checked AWS ALB state and DNS first.
+When `curl` could not resolve the ALB hostname, the first checks were AWS ALB state and DNS.
 
-The ALB was simply still provisioning.
+The ALB was still provisioning.
 
-No Terraform/Kubernetes changes were needed.
+No Terraform or Kubernetes changes were required.
 
-## Lesson 2 — An HTTP 404 can actually prove the infrastructure works
+## Lesson 2 — An HTTP 404 can prove most of the stack works
 
-The ALB returned `404 page not found` from the Go server.
+The ALB returned an application-generated 404 for `/`.
 
 That meant:
 
@@ -1384,66 +1177,49 @@ That meant:
 DNS worked
 TCP connection worked
 ALB listener worked
-routing worked
-service/pod path worked
+Ingress routing worked
+Service routing worked
+Pod networking worked
 Go process responded
 ```
 
-Only the requested application route was wrong.
+Only the requested application route was incorrect.
 
-## Lesson 3 — Inspect application routes before changing ingress rules
+## Lesson 3 — Inspect application behavior before changing networking
 
-The Go source showed `/home` existed while `/` did not.
+The application source showed `/home` was valid while `/` was not.
 
 Testing `/home` immediately returned HTTP 200.
 
-## Lesson 4 — Health checks should match real application behavior
+## Lesson 4 — Health checks must match real application behavior
 
-The ALB health-check path was changed from the default root path to `/home`.
+The ALB health-check path was explicitly set to `/home` rather than relying on the default `/` path.
 
-## Lesson 5 — Git automation can move the branch behind your local checkout
+## Lesson 5 — Keep environment-specific values out of public Git
 
-Project 1 CI commits image-tag changes back to Git.
+The EKS API allow-list CIDR was moved into ignored `terraform.tfvars` before the repository was published.
 
-That caused a non-fast-forward push rejection during the footer change.
+## Lesson 6 — Terraform exposes architecture that higher-level tools hide
 
-The correct recovery was a rebase, not a force push:
+Much of the difficulty in Project 2 was not Terraform syntax itself. The real complexity came from making AWS/EKS requirements explicit:
 
-```bash
-git pull --rebase origin main
-git push
-```
-
-## Lesson 6 — Verify after automation
-
-The first large footer script failed partway through.
-
-Explicit checks prevented us from mistakenly believing the live app had changed.
-
-## Lesson 7 — Keep account-specific values out of the public repository
-
-The EKS API allow-list CIDR was moved into ignored `terraform.tfvars` before the first push.
-
-## Lesson 8 — Terraform syntax is not the hardest part
-
-Much of the complexity in this project came from the actual AWS/EKS architecture:
-
-- routing
+- subnet design
+- route tables
 - NAT
 - IAM
-- EKS control-plane requirements
-- private nodes
+- EKS control-plane permissions
+- private worker nodes
+- provider authentication
 - Pod Identity
-- Kubernetes provider authentication
 - load-balancer integration
 
-Tools such as `eksctl` hide many of these details. Terraform made them explicit.
+That visibility was one of the main learning goals of Project 2.
 
 ---
 
-# 33. Useful Verification Commands
+# 28. Useful Verification Commands
 
-## Infrastructure / nodes
+## EKS nodes
 
 ```bash
 kubectl get nodes -o wide
@@ -1528,7 +1304,7 @@ Expected:
 
 ---
 
-# 34. Terraform Commands Used Most Often
+# 29. Terraform Commands Used Most Often
 
 ## Infrastructure layer
 
@@ -1566,7 +1342,7 @@ kubectl apply -f argocd/application.yaml
 
 ---
 
-# 35. Final Architecture Summary
+# 30. Final Architecture Summary
 
 ```text
                          GitHub
@@ -1596,7 +1372,6 @@ kubectl apply -f argocd/application.yaml
                             v
                       Go web app
 
-
 AWS foundation managed by Terraform:
 
 VPC 10.0.0.0/16
@@ -1616,34 +1391,34 @@ VPC 10.0.0.0/16
 
 ---
 
-# 36. How to Explain This Project in an Interview
+# 31. Interview Explanation
 
-A concise explanation:
+A concise way to explain Project 2:
 
-> I rebuilt an EKS application platform with Terraform rather than relying on `eksctl`. I explicitly provisioned the VPC, public and private subnets, NAT gateways, routing, EKS control plane, IAM roles, and a private managed node group across two Availability Zones. I separated the Kubernetes platform components into a second Terraform root module, installed Argo CD and AWS Load Balancer Controller with Helm, and used EKS Pod Identity to give the controller dedicated AWS permissions. I then reused a proven Helm chart, converted its ingress to AWS ALB, and used an Argo CD Application with automated sync, prune, and self-heal to deploy it from Git. I verified the whole path through an internet-facing ALB and debugged DNS provisioning, an application-level 404, and the ALB health-check path.
+> I rebuilt an EKS application platform with Terraform rather than relying on `eksctl`. I explicitly provisioned the VPC, public and private subnets, NAT gateways, routing, EKS control plane, IAM roles, and a private managed node group across two Availability Zones. I separated the Kubernetes platform components into a second Terraform root module, installed Argo CD and AWS Load Balancer Controller with Helm, and used EKS Pod Identity to give the controller dedicated AWS permissions. I reused a proven Helm application chart from my earlier EKS project, converted its ingress to AWS ALB, and used an Argo CD Application with automated sync, prune, and self-heal to deploy it from Git. I verified the complete path through an internet-facing ALB and debugged both ALB DNS provisioning and an application-route 404 before aligning the ALB health check with the actual `/home` endpoint.
 
-Key tradeoffs that can be discussed:
+Useful tradeoffs to discuss:
 
 - two NAT Gateways vs one cheaper NAT Gateway
 - private nodes vs public nodes
 - Pod Identity vs broad worker-node permissions
-- separate Terraform states vs one giant state
-- ALB ingress vs ingress-nginx
+- separate Terraform states vs one large state
+- AWS ALB ingress vs a separate ingress-controller pattern
 - GitOps reconciliation vs direct `kubectl apply`
-- local Terraform state for a lab vs remote state for a shared production environment
+- local Terraform state for a lab vs remote state for a shared environment
 
 ---
 
-# 37. Project Completion State
+# 32. Project Completion State
 
-Project 2 is considered complete when all of the following are true:
+Project 2 is complete when all of the following are true:
 
 ```text
 [✓] Terraform network applied
 [✓] EKS cluster applied
 [✓] two private worker nodes Ready
 [✓] Argo CD installed
-[✓] Pod Identity Agent installed
+[✓] EKS Pod Identity Agent installed
 [✓] AWS Load Balancer Controller installed
 [✓] Helm chart stored in Project 2 GitOps path
 [✓] Argo CD Application bootstrapped
@@ -1652,7 +1427,6 @@ Project 2 is considered complete when all of the following are true:
 [✓] internet-facing ALB Active
 [✓] /home returns HTTP 200
 [✓] ALB health check uses /home
-[✓] website footer customized
 [✓] README written
 [✓] teardown guide written
 [✓] build journal written
