@@ -2,90 +2,99 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-
-        header {
-            background-color: #333;
-            color: #fff;
-            padding: 10px 0;
-            text-align: center;
-        }
-
-        nav ul {
-            list-style-type: none;
-            padding: 0;
-        }
-
-        nav ul li {
-            display: inline;
-            margin-right: 10px;
-        }
-
-        nav ul li a {
-            color: #fff;
-            text-decoration: none;
-        }
-
-        main {
-            padding: 20px;
-        }
-
-        section {
-            margin-bottom: 20px;
-        }
-
-        footer {
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            padding: 10px 0;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-        }
-    </style>    
+    <title>Terraform EKS GitOps Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <header>
+<header class="site-header">
+    <div class="container nav-wrap">
+        <a class="brand" href="/home">Project 2</a>
         <nav>
-            <ul>
-                <li><a href="home">Home</a></li>
-                <li><a href="about">About</a></li>
-                <li><a href="contact">Contact</a></li>
-                <li><a href="courses">Courses</a></li>
-            </ul>
+            <a class="active" href="/home">Home</a>
+            <a href="/pipeline">Pipeline</a>
+            <a href="/platform">Platform</a>
+            <a href="/deployment">Deployment</a>
+            <a href="/about">About</a>
         </nav>
-    </header>
+    </div>
+</header>
 
-    <main>
-        <section>
-            <h1>Learn DevOps from Basics</h1>
-            <p>The main purpose of this website is to guide people on how to learn DevOps 
-                from basics for Free. We will provide you with the best resources to learn.
-            </p>
-        </section>
+<main>
+    <section class="hero container">
+        <span class="eyebrow">Cloud-Native DevOps Showcase</span>
+        <h1>Terraform EKS GitOps Platform</h1>
+        <p class="lead">A containerized Go application delivered to Amazon EKS through automated CI, GitOps, and infrastructure as code.</p>
+        <div class="badges">
+            <span>Go</span><span>Docker</span><span>GitHub Actions</span><span>Terraform</span><span>Kubernetes</span><span>Argo CD</span><span>AWS</span>
+        </div>
+    </section>
 
-        <section>
-            <h2>Overview</h2>
-            <p> Zero to Hero courses on all DevOps tools and popular Cloud(AWS and Azure) platform</p>
-        </section>
+    <section class="container section">
+        <div class="section-heading">
+            <span class="eyebrow">Platform at a glance</span>
+            <h2>One repository, complete delivery flow</h2>
+        </div>
+        <div class="card-grid three">
+            <article class="card">
+                <span class="card-label">Infrastructure</span>
+                <h3>Terraform + AWS EKS</h3>
+                <p>The AWS network, Kubernetes cluster, IAM relationships, and platform components are provisioned declaratively.</p>
+            </article>
+            <article class="card">
+                <span class="card-label">Delivery</span>
+                <h3>GitHub Actions + Argo CD</h3>
+                <p>Application changes are tested, containerized, published, and reconciled into the cluster through GitOps.</p>
+            </article>
+            <article class="card">
+                <span class="card-label">Networking</span>
+                <h3>Private Workers + AWS ALB</h3>
+                <p>Application workloads run on private EKS workers while an AWS Application Load Balancer provides ingress.</p>
+            </article>
+        </div>
+    </section>
 
-        <section>
-            <h2>Courses Offered</h2>
-            <p>Please look at the <a href="courses">courses</a> section.</p>  
-        </section>
-    </main>
+    <section class="container section">
+        <div class="section-heading">
+            <span class="eyebrow">Deployment flow</span>
+            <h2>From source change to running workload</h2>
+        </div>
+        <div class="flow">
+            <div class="flow-step"><strong>Code</strong><span>Go application</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><strong>CI</strong><span>GitHub Actions</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><strong>Image</strong><span>Docker Hub</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><strong>GitOps</strong><span>Helm values</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><strong>CD</strong><span>Argo CD</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><strong>Runtime</strong><span>Amazon EKS</span></div>
+        </div>
+    </section>
 
-    <footer>
-        <p>&copy; Bryan Obabori</p>
-    </footer>
+    <section class="container section">
+        <div class="status-panel">
+            <div>
+                <span class="status-dot"></span>
+                <span class="eyebrow">Deployment profile</span>
+                <h2>Designed for a production-style Kubernetes workflow</h2>
+            </div>
+            <dl class="facts">
+                <div><dt>Application</dt><dd>go-web-app</dd></div>
+                <div><dt>Runtime</dt><dd>Amazon EKS</dd></div>
+                <div><dt>Continuous Delivery</dt><dd>Argo CD</dd></div>
+                <div><dt>Infrastructure</dt><dd>Terraform</dd></div>
+                <div><dt>Ingress</dt><dd>AWS ALB</dd></div>
+                <div><dt>Health Route</dt><dd>/home</dd></div>
+            </dl>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <div class="container">Bryan Obabori · Terraform EKS GitOps Platform</div>
+</footer>
 </body>
 </html>
