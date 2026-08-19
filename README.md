@@ -2,6 +2,14 @@
 
 A self-contained DevOps project that builds a Go web application, publishes an immutable container image, provisions a production-style AWS EKS platform with Terraform, and continuously deploys the application through Argo CD and GitOps.
 
+## Live Demo
+
+**Current application endpoint:**
+
+http://k8s-default-gowebapp-3fc3d8af86-387361958.us-east-1.elb.amazonaws.com/home
+
+> **Note:** This is the current AWS-generated DNS name for the internet-facing Application Load Balancer. The hostname is ephemeral and may change when the environment is destroyed and rebuilt because recreating the Kubernetes Ingress can provision a new ALB with a different AWS-assigned DNS name. A stable custom DNS name is planned for a future iteration.
+
 Project 2 is an improved evolution of Project 1. The earlier project proved the basic Docker, Kubernetes, Helm, GitHub Actions, Argo CD, and EKS delivery flow. Project 2 rebuilds the same application-delivery idea with explicit Terraform-managed AWS infrastructure, private worker nodes, EKS Pod Identity, AWS Load Balancer Controller, Terraform-managed Argo bootstrap, and a repository-local CI pipeline.
 
 ## End-to-End Architecture
@@ -90,9 +98,11 @@ eks-gitops-terraform/
 │   ├── main_test.go
 │   └── static/
 │       ├── about.html
-│       ├── contact.html
-│       ├── courses.html
+│       ├── deployment.html
 │       ├── home.html
+│       ├── pipeline.html
+│       ├── platform.html
+│       ├── style.css
 │       └── images/
 │
 ├── .github/
@@ -128,9 +138,10 @@ The Go application lives in `app/` and exposes:
 
 ```text
 /home
-/courses
+/pipeline
+/platform
+/deployment
 /about
-/contact
 ```
 
 It intentionally has no `/` route, so the ALB health check uses `/home`.
