@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: go-web-app
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 
 spec:
   project: default
