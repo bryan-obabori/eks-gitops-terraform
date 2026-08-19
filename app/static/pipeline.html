@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline · Terraform EKS GitOps Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="container nav-wrap">
+        <a class="brand" href="/home">Project 2</a>
+        <nav>
+            <a href="/home">Home</a>
+            <a class="active" href="/pipeline">Pipeline</a>
+            <a href="/platform">Platform</a>
+            <a href="/deployment">Deployment</a>
+            <a href="/about">About</a>
+        </nav>
+    </div>
+</header>
+
+<main>
+    <section class="hero compact container">
+        <span class="eyebrow">CI/CD Pipeline</span>
+        <h1>From commit to Kubernetes rollout</h1>
+        <p class="lead">The application pipeline separates continuous integration from continuous delivery while using Git as the deployment source of truth.</p>
+    </section>
+
+    <section class="container section">
+        <div class="timeline">
+            <article><span class="number">01</span><div><h3>Source</h3><p>Application changes are pushed under <code>app/</code>.</p></div></article>
+            <article><span class="number">02</span><div><h3>Test & Build</h3><p>GitHub Actions runs the Go test suite and builds the application.</p></div></article>
+            <article><span class="number">03</span><div><h3>Containerize</h3><p>Docker Buildx produces a <code>linux/amd64</code> image for the EKS runtime.</p></div></article>
+            <article><span class="number">04</span><div><h3>Publish</h3><p>The image is pushed to Docker Hub with an immutable <code>run-&lt;ID&gt;</code> tag.</p></div></article>
+            <article><span class="number">05</span><div><h3>GitOps Update</h3><p>The pipeline updates the desired image version stored in Helm values.</p></div></article>
+            <article><span class="number">06</span><div><h3>Reconcile</h3><p>Argo CD detects the Git change and syncs the desired state into EKS.</p></div></article>
+            <article><span class="number">07</span><div><h3>Rollout</h3><p>Kubernetes replaces the workload with the newly published application image.</p></div></article>
+        </div>
+    </section>
+
+    <section class="container section">
+        <div class="card-grid two">
+            <article class="card">
+                <span class="card-label">Continuous Integration</span>
+                <h3>Test → Build → Publish</h3>
+                <p>CI verifies the source and turns it into a versioned deployable artifact.</p>
+            </article>
+            <article class="card">
+                <span class="card-label">Continuous Delivery</span>
+                <h3>Git → Argo CD → EKS</h3>
+                <p>CD begins from the desired state committed to Git, not from direct cluster mutation by the CI runner.</p>
+            </article>
+        </div>
+    </section>
+</main>
+
+<footer><div class="container">Bryan Obabori · Terraform EKS GitOps Platform</div></footer>
+</body>
+</html>
