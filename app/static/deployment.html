@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deployment · Terraform EKS GitOps Platform</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="container nav-wrap">
+        <a class="brand" href="/home">Project 2</a>
+        <nav>
+            <a href="/home">Home</a>
+            <a href="/pipeline">Pipeline</a>
+            <a href="/platform">Platform</a>
+            <a class="active" href="/deployment">Deployment</a>
+            <a href="/about">About</a>
+        </nav>
+    </div>
+</header>
+
+<main>
+    <section class="hero compact container">
+        <span class="eyebrow">Deployment Profile</span>
+        <h1>Safe operational context, without exposing infrastructure secrets</h1>
+        <p class="lead">This page summarizes how the application runs. It intentionally avoids account IDs, private addresses, credentials, ARNs, cluster endpoints, and other environment-specific identifiers.</p>
+    </section>
+
+    <section class="container section">
+        <div class="status-panel">
+            <div class="status-summary">
+                <span class="status-dot"></span>
+                <span class="eyebrow">Application status</span>
+                <h2>Running on Kubernetes</h2>
+                <p>The application is served through the existing EKS and ALB delivery path.</p>
+            </div>
+            <dl class="facts">
+                <div><dt>Application</dt><dd>go-web-app</dd></div>
+                <div><dt>Runtime</dt><dd>Go</dd></div>
+                <div><dt>Container Port</dt><dd>8080</dd></div>
+                <div><dt>Orchestrator</dt><dd>Amazon EKS</dd></div>
+                <div><dt>Service Type</dt><dd>ClusterIP</dd></div>
+                <div><dt>Ingress</dt><dd>AWS ALB</dd></div>
+                <div><dt>Health Route</dt><dd>/home</dd></div>
+                <div><dt>Continuous Delivery</dt><dd>Argo CD</dd></div>
+                <div><dt>Infrastructure</dt><dd>Terraform</dd></div>
+                <div><dt>Deployment Model</dt><dd>GitOps</dd></div>
+            </dl>
+        </div>
+    </section>
+
+    <section class="container section">
+        <div class="card-grid three">
+            <article class="card"><span class="card-label">Artifact</span><h3>Immutable Image</h3><p>Application builds use unique GitHub Actions run-based Docker tags instead of a mutable latest tag.</p></article>
+            <article class="card"><span class="card-label">Desired State</span><h3>Git + Helm</h3><p>The container version and Kubernetes workload configuration are represented declaratively in Git.</p></article>
+            <article class="card"><span class="card-label">Reconciliation</span><h3>Argo CD</h3><p>Argo CD compares Git with cluster state and applies the declared workload configuration.</p></article>
+        </div>
+    </section>
+</main>
+
+<footer><div class="container">Bryan Obabori · Terraform EKS GitOps Platform</div></footer>
+</body>
+</html>
